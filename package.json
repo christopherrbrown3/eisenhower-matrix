@@ -1,0 +1,11 @@
+{
+  "name": "eisenhower-matrix",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "check": "node --test && node --check js/app.js && node --check js/model.js && node --check js/storage.js",
+    "serve": "python3 -m http.server 4173"
+  }
+}

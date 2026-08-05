@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#ffffff">
+    <meta
+      name="description"
+      content="A lightweight Eisenhower Matrix for deciding what to do, schedule, delegate, or eliminate."
+    >
+    <title>Eisenhower Matrix</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+    <script type="module" src="js/app.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#matrix">Skip to the matrix</a>
+
+    <div class="app-shell">
+      <div id="storage-banner" class="storage-banner" role="alert" hidden>
+        <span id="storage-banner-message"></span>
+        <button class="text-button" type="button" data-action="dismiss-storage-banner">
+          Dismiss
+        </button>
+      </div>
+
+      <header class="app-header">
+        <a class="brand" href="./" aria-label="Eisenhower Matrix home">
+          <span class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+          </span>
+          <span class="brand-name">Eisenhower Matrix</span>
+        </a>
+
+        <div class="header-actions">
+          <button
+            id="completed-toggle"
+            class="secondary-button completed-toggle"
+            type="button"
+            aria-pressed="false"
+            hidden
+          >
+            Show completed
+          </button>
+          <button class="primary-button desktop-add" type="button" data-action="open-composer">
+            <span>Add task</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M12 5v14M5 12h14"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section id="composer" class="composer" aria-labelledby="composer-heading" hidden>
+        <form id="task-form" novalidate>
+          <div class="composer-heading-row">
+            <div>
+              <h2 id="composer-heading">Place a new task</h2>
+              <p>Give it a name, then separate importance from urgency.</p>
+            </div>
+            <button
+              class="icon-button"
+              type="button"
+              data-action="close-composer"
+              aria-label="Close task composer"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="m6 6 12 12M18 6 6 18"></path>
+              </svg>
+            </button>
+          </div>
+
+          <div class="composer-grid">
+            <div class="title-field">
+              <label for="task-title">What needs attention?</label>
+              <input
+                id="task-title"
+                name="title"
+                type="text"
+                maxlength="160"
+                autocomplete="off"
+                placeholder="e.g. Review the launch brief"
+                aria-describedby="title-error"
+                required
+              >
+              <p id="title-error" class="field-error" hidden>Please enter a task.</p>
+            </div>
+
+            <fieldset class="signal-fieldset" data-signal="important">
+              <legend>Is it important?</legend>
+              <p id="important-hint">Does it advance a goal or prevent a meaningful problem?</p>
+              <div class="choice-group" aria-describedby="important-hint">
+                <label class="choice-option">
+                  <input type="radio" name="important" value="true">
+                  <span>Important</span>
+                </label>
+                <label class="choice-option">
+                  <input type="radio" name="important" value="false">
+                  <span>Not important</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset class="signal-fieldset" data-signal="urgent">
+              <legend>Is it urgent?</legend>
+              <p id="urgent-hint">Does it need attention soon or carry immediate consequences?</p>
+              <div class="choice-group" aria-describedby="urgent-hint">
+                <label class="choice-option">
+                  <input type="radio" name="urgent" value="true">
+                  <span>Urgent</span>
+                </label>
+                <label class="choice-option">
+                  <input type="radio" name="urgent" value="false">
+                  <span>Not urgent</span>
+                </label>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="composer-footer">
+            <div id="destination-preview" class="destination-preview" aria-live="polite">
+              <span class="destination-dot" aria-hidden="true"></span>
+              <span>Choose importance and urgency</span>
+            </div>
+            <button id="create-task-button" class="primary-button" type="submit" disabled>
+              Add task
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <main id="main-content">
+        <section id="first-run" class="first-run" aria-label="Getting started" hidden>
+          <p><strong>Add a task.</strong> Answer two questions, and we’ll place it for you.</p>
+          <button class="text-button" type="button" data-action="open-composer">Add task</button>
+        </section>
+        <div id="matrix" class="matrix" aria-label="Eisenhower Matrix">
+          <section class="quadrant quadrant--do" data-quadrant="do" aria-labelledby="do-heading">
+            <header class="quadrant-header">
+              <div class="quadrant-title-group">
+                <span class="quadrant-symbol" aria-hidden="true"></span>
+                <div>
+                  <h2 id="do-heading">Do now</h2>
+                  <p>Important + urgent</p>
+                </div>
+              </div>
+              <span class="quadrant-count" data-count-for="do" aria-label="0 tasks">0</span>
+            </header>
+            <ul class="task-list" data-list-for="do" aria-label="Do now tasks"></ul>
+            <p class="quadrant-empty" data-empty-for="do">Nothing needs immediate attention.</p>
+          </section>
+
+          <section
+            class="quadrant quadrant--schedule"
+            data-quadrant="schedule"
+            aria-labelledby="schedule-heading"
+          >
+            <header class="quadrant-header">
+              <div class="quadrant-title-group">
+                <span class="quadrant-symbol" aria-hidden="true"></span>
+                <div>
+                  <h2 id="schedule-heading">Schedule</h2>
+                  <p>Important, not urgent</p>
+                </div>
+              </div>
+              <span class="quadrant-count" data-count-for="schedule" aria-label="0 tasks">0</span>
+            </header>
+            <ul class="task-list" data-list-for="schedule" aria-label="Schedule tasks"></ul>
+            <p class="quadrant-empty" data-empty-for="schedule">No strategic work waiting.</p>
+          </section>
+
+          <section
+            class="quadrant quadrant--delegate"
+            data-quadrant="delegate"
+            aria-labelledby="delegate-heading"
+          >
+            <header class="quadrant-header">
+              <div class="quadrant-title-group">
+                <span class="quadrant-symbol" aria-hidden="true"></span>
+                <div>
+                  <h2 id="delegate-heading">Delegate</h2>
+                  <p>Urgent, not important</p>
+                </div>
+              </div>
+              <span class="quadrant-count" data-count-for="delegate" aria-label="0 tasks">0</span>
+            </header>
+            <ul class="task-list" data-list-for="delegate" aria-label="Delegate tasks"></ul>
+            <p class="quadrant-empty" data-empty-for="delegate">Nothing is parked for handoff.</p>
+          </section>
+
+          <section
+            class="quadrant quadrant--eliminate"
+            data-quadrant="eliminate"
+            aria-labelledby="eliminate-heading"
+          >
+            <header class="quadrant-header">
+              <div class="quadrant-title-group">
+                <span class="quadrant-symbol" aria-hidden="true"></span>
+                <div>
+                  <h2 id="eliminate-heading">Eliminate</h2>
+                  <p>Neither important nor urgent</p>
+                </div>
+              </div>
+              <span class="quadrant-count" data-count-for="eliminate" aria-label="0 tasks">0</span>
+            </header>
+            <ul class="task-list" data-list-for="eliminate" aria-label="Eliminate tasks"></ul>
+            <p class="quadrant-empty" data-empty-for="eliminate">No low-value work to reconsider.</p>
+          </section>
+        </div>
+      </main>
+
+      <footer class="app-footer">
+        <span class="save-status">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10M7 10h10v8H7z"></path>
+          </svg>
+          <span id="save-status-text">Saved on this device</span>
+        </span>
+        <span class="shortcut-hint"><kbd>N</kbd> New task</span>
+      </footer>
+    </div>
+
+    <button class="primary-button mobile-add" type="button" data-action="open-composer">
+      <span>Add task</span>
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14"></path>
+      </svg>
+    </button>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden>
+      <span id="toast-message"></span>
+      <button id="toast-action" class="toast-action" type="button" hidden>Undo</button>
+    </div>
+
+    <div id="announcer" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+    <noscript>
+      <div class="noscript-message">
+        Eisenhower Matrix needs JavaScript to classify and save tasks in this browser.
+      </div>
+    </noscript>
+  </body>
+</html>

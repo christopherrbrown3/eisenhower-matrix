@@ -1,0 +1,819 @@
+import {
+  addTask,
+  cleanTitle,
+  deleteTask,
+  editTaskTitle,
+  moveTask,
+  quadrantFor,
+  QUADRANTS,
+  QUADRANT_IDS,
+  restoreDeletedTask,
+  setTaskCompleted,
+  tasksForQuadrant,
+} from "./model.js";
+import {
+  getLocalStorage,
+  parseExternalState,
+  readState,
+  STORAGE_KEY,
+  writeState,
+} from "./storage.js";
+
+const elements = {
+  announcer: document.querySelector("#announcer"),
+  completedToggle: document.querySelector("#completed-toggle"),
+  composer: document.querySelector("#composer"),
+  createTaskButton: document.querySelector("#create-task-button"),
+  destinationPreview: document.querySelector("#destination-preview"),
+  firstRun: document.querySelector("#first-run"),
+  matrix: document.querySelector("#matrix"),
+  saveStatus: document.querySelector("#save-status-text"),
+  storageBanner: document.querySelector("#storage-banner"),
+  storageBannerMessage: document.querySelector("#storage-banner-message"),
+  taskForm: document.querySelector("#task-form"),
+  taskTitle: document.querySelector("#task-title"),
+  titleError: document.querySelector("#title-error"),
+  toast: document.querySelector("#toast"),
+  toastAction: document.querySelector("#toast-action"),
+  toastMessage: document.querySelector("#toast-message"),
+};
+
+const ICON_PATHS = Object.freeze({
+  check: ["M5 12.5 9.5 17 19 7"],
+  close: ["m6 6 12 12", "M18 6 6 18"],
+  move: ["M12 4v16", "m7 9 5-5 5 5", "m7 15 5 5 5-5"],
+  save: ["m5 12 4 4L19 6"],
+  trash: ["M4 7h16", "M9 7V4h6v3", "m7 7 1 13h8l1-13"],
+});
+
+const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const storageResult = getLocalStorage(window);
+let storage = storageResult.storage;
+const initial = readState(storage);
+let state = initial.state;
+let showCompleted = false;
+let editingTaskId = null;
+let openMoveTaskId = null;
+let deletedForUndo = null;
+let toastTimer = 0;
+let pointerSession = null;
+let suppressDragClick = false;
+const pendingCompletions = new Set();
+
+function createSvgIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("viewBox", "0 0 24 24");
+
+  for (const pathData of ICON_PATHS[name]) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathData);
+    svg.append(path);
+  }
+
+  return svg;
+}
+
+function createIconButton({ action, label, icon, taskId, className = "task-action" }) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.dataset.action = action;
+  if (taskId) button.dataset.taskId = taskId;
+  button.setAttribute("aria-label", label);
+  button.title = label;
+  button.append(createSvgIcon(icon));
+  return button;
+}
+
+function pluralize(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function announce(message) {
+  elements.announcer.textContent = "";
+  window.requestAnimationFrame(() => {
+    elements.announcer.textContent = message;
+  });
+}
+
+function setSaveStatus(message) {
+  elements.saveStatus.textContent = message;
+}
+
+function showStorageBanner(message) {
+  elements.storageBannerMessage.textContent = message;
+  elements.storageBanner.hidden = false;
+}
+
+function persist(nextState) {
+  const result = writeState(storage, nextState);
+  state = result.state;
+
+  if (result.error) {
+    storage = null;
+    setSaveStatus("Not saved after reload");
+    showStorageBanner(
+      "This browser stopped accepting saved changes. Tasks will remain available until this page closes.",
+    );
+  } else {
+    setSaveStatus("Saved on this device");
+  }
+}
+
+function getTask(taskId) {
+  return state.tasks.find((task) => task.id === taskId) ?? null;
+}
+
+function findTaskElement(taskId) {
+  return [...document.querySelectorAll(".task[data-task-id]")].find(
+    (element) => element.dataset.taskId === taskId && !element.classList.contains("drag-ghost"),
+  );
+}
+
+function captureTaskRects() {
+  const rects = new Map();
+  document.querySelectorAll(".task[data-task-id]:not(.drag-ghost)").forEach((element) => {
+    rects.set(element.dataset.taskId, element.getBoundingClientRect());
+  });
+  return rects;
+}
+
+function animateFromRects(previousRects) {
+  if (!previousRects || motionQuery.matches) return;
+
+  document.querySelectorAll(".task[data-task-id]:not(.drag-ghost)").forEach((element) => {
+    const previous = previousRects.get(element.dataset.taskId);
+    if (!previous) return;
+    const current = element.getBoundingClientRect();
+    const deltaX = previous.left - current.left;
+    const deltaY = previous.top - current.top;
+    if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) return;
+
+    element.animate(
+      [
+        { transform: `translate(${deltaX}px, ${deltaY}px)` },
+        { transform: "translate(0, 0)" },
+      ],
+      { duration: 240, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
+  });
+}
+
+function focusTask(taskId, selector = ".task-title-button") {
+  window.requestAnimationFrame(() => {
+    const taskElement = findTaskElement(taskId);
+    taskElement?.querySelector(selector)?.focus();
+  });
+}
+
+function createEditForm(task) {
+  const form = document.createElement("form");
+  form.className = "edit-form";
+  form.dataset.editForm = task.id;
+
+  const input = document.createElement("input");
+  input.className = "edit-input";
+  input.name = "title";
+  input.type = "text";
+  input.maxLength = 160;
+  input.value = task.title;
+  input.setAttribute("aria-label", `Edit task: ${task.title}`);
+
+  const saveButton = createIconButton({
+    action: "save-edit",
+    label: "Save task title",
+    icon: "save",
+    taskId: task.id,
+    className: "task-action edit-action",
+  });
+  saveButton.type = "submit";
+
+  const cancelButton = createIconButton({
+    action: "cancel-edit",
+    label: "Keep current task title",
+    icon: "close",
+    taskId: task.id,
+    className: "task-action edit-action",
+  });
+
+  form.append(input, saveButton, cancelButton);
+  return form;
+}
+
+function createMovePanel(task, currentQuadrant) {
+  const panel = document.createElement("div");
+  panel.className = "move-panel";
+  panel.id = `move-options-${task.id}`;
+
+  const label = document.createElement("span");
+  label.className = "move-panel-label";
+  label.textContent = "Move to";
+  panel.append(label);
+
+  for (const quadrantId of QUADRANT_IDS) {
+    if (quadrantId === currentQuadrant) continue;
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "move-option";
+    option.dataset.action = "move-task";
+    option.dataset.taskId = task.id;
+    option.dataset.targetQuadrant = quadrantId;
+    option.textContent = QUADRANTS[quadrantId].label;
+    panel.append(option);
+  }
+
+  return panel;
+}
+
+function createTaskElement(task, quadrantId, arrivingId) {
+  const item = document.createElement("li");
+  item.className = "task";
+  item.dataset.taskId = task.id;
+  item.dataset.quadrant = quadrantId;
+  if (task.completed) item.classList.add("is-completed");
+  if (editingTaskId === task.id) item.classList.add("is-editing");
+  if (task.id === arrivingId) item.classList.add("is-arriving");
+
+  const row = document.createElement("div");
+  row.className = "task-row";
+
+  const dragHandle = document.createElement("button");
+  dragHandle.type = "button";
+  dragHandle.className = "drag-handle";
+  dragHandle.dataset.action = "toggle-move";
+  dragHandle.dataset.taskId = task.id;
+  dragHandle.setAttribute("aria-label", `Move ${task.title}`);
+  dragHandle.setAttribute("aria-expanded", String(openMoveTaskId === task.id));
+  dragHandle.setAttribute("aria-controls", `move-options-${task.id}`);
+  dragHandle.title = "Drag or choose a quadrant";
+  const dots = document.createElement("span");
+  dots.className = "drag-dots";
+  dots.setAttribute("aria-hidden", "true");
+  dragHandle.append(dots);
+
+  const completeButton = document.createElement("button");
+  completeButton.type = "button";
+  completeButton.className = "complete-button";
+  completeButton.dataset.action = "toggle-complete";
+  completeButton.dataset.taskId = task.id;
+  completeButton.setAttribute(
+    "aria-label",
+    task.completed ? `Restore ${task.title}` : `Complete ${task.title}`,
+  );
+  completeButton.title = task.completed ? "Restore task" : "Complete task";
+  const completeRing = document.createElement("span");
+  completeRing.className = "complete-ring";
+  completeRing.setAttribute("aria-hidden", "true");
+  completeRing.append(createSvgIcon("check"));
+  completeButton.append(completeRing);
+
+  const content = document.createElement("div");
+  content.className = "task-content";
+  if (editingTaskId === task.id) {
+    content.append(createEditForm(task));
+  } else {
+    const titleButton = document.createElement("button");
+    titleButton.type = "button";
+    titleButton.className = "task-title-button";
+    titleButton.dataset.action = "edit-task";
+    titleButton.dataset.taskId = task.id;
+    titleButton.textContent = task.title;
+    titleButton.setAttribute("aria-label", `Edit task: ${task.title}`);
+    content.append(titleButton);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "task-actions";
+  actions.setAttribute("role", "group");
+  actions.setAttribute("aria-label", `Actions for ${task.title}`);
+  actions.append(
+    createIconButton({
+      action: "delete-task",
+      label: `Delete ${task.title}`,
+      icon: "trash",
+      taskId: task.id,
+    }),
+  );
+
+  row.append(dragHandle, completeButton, content, actions);
+  item.append(row);
+
+  if (openMoveTaskId === task.id) item.append(createMovePanel(task, quadrantId));
+  return item;
+}
+
+function render({ previousRects = null, arrivingId = null, focusId = null } = {}) {
+  for (const quadrantId of QUADRANT_IDS) {
+    const tasks = tasksForQuadrant(state, quadrantId, showCompleted);
+    const activeCount = state.tasks.filter(
+      (task) => quadrantFor(task) === quadrantId && !task.completed,
+    ).length;
+    const list = document.querySelector(`[data-list-for="${quadrantId}"]`);
+    const empty = document.querySelector(`[data-empty-for="${quadrantId}"]`);
+    const count = document.querySelector(`[data-count-for="${quadrantId}"]`);
+
+    list.replaceChildren(...tasks.map((task) => createTaskElement(task, quadrantId, arrivingId)));
+    empty.hidden = tasks.length > 0;
+    count.textContent = String(activeCount);
+    count.setAttribute("aria-label", pluralize(activeCount, "active task"));
+  }
+
+  const completedCount = state.tasks.filter((task) => task.completed).length;
+  elements.completedToggle.hidden = completedCount === 0;
+  elements.completedToggle.setAttribute("aria-pressed", String(showCompleted));
+  const completedAction = showCompleted ? "Hide" : "Show";
+  const completedVerb = document.createElement("span");
+  completedVerb.className = "completed-verb";
+  completedVerb.textContent = `${completedAction} `;
+  const completedLabel = document.createElement("span");
+  completedLabel.className = "completed-label";
+  completedLabel.textContent = `completed (${completedCount})`;
+  elements.completedToggle.replaceChildren(completedVerb, completedLabel);
+  elements.completedToggle.setAttribute(
+    "aria-label",
+    `${completedAction} completed tasks (${completedCount})`,
+  );
+  elements.firstRun.hidden = state.tasks.length > 0;
+
+  window.requestAnimationFrame(() => animateFromRects(previousRects));
+  if (focusId) focusTask(focusId, editingTaskId === focusId ? ".edit-input" : ".task-title-button");
+}
+
+function composerSignals() {
+  const importantValue = elements.taskForm.elements.important.value;
+  const urgentValue = elements.taskForm.elements.urgent.value;
+  return {
+    important: importantValue === "" ? null : importantValue === "true",
+    urgent: urgentValue === "" ? null : urgentValue === "true",
+  };
+}
+
+function updateComposer() {
+  const title = cleanTitle(elements.taskTitle.value);
+  const signals = composerSignals();
+  const quadrantId = quadrantFor(signals);
+
+  elements.createTaskButton.disabled = !title || !quadrantId;
+  elements.destinationPreview.removeAttribute("data-quadrant");
+
+  if (quadrantId) {
+    elements.destinationPreview.dataset.quadrant = quadrantId;
+    elements.destinationPreview.lastElementChild.textContent = `Goes to: ${QUADRANTS[quadrantId].label}`;
+  } else {
+    elements.destinationPreview.lastElementChild.textContent = "Choose importance and urgency";
+  }
+
+  if (title) {
+    elements.taskTitle.removeAttribute("aria-invalid");
+    elements.titleError.hidden = true;
+  }
+}
+
+function openComposer() {
+  if (!elements.composer.hidden) {
+    elements.taskTitle.focus();
+    return;
+  }
+
+  elements.composer.hidden = false;
+  document.body.classList.add("composer-open");
+  if (!motionQuery.matches) {
+    elements.composer.animate(
+      [
+        { opacity: 0, transform: "translateY(-8px)", filter: "blur(3px)" },
+        { opacity: 1, transform: "translateY(0)", filter: "blur(0)" },
+      ],
+      { duration: 220, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+    );
+  }
+
+  elements.composer.scrollIntoView({ behavior: motionQuery.matches ? "auto" : "smooth", block: "nearest" });
+  window.requestAnimationFrame(() => elements.taskTitle.focus());
+}
+
+function closeComposer({ returnFocus = true } = {}) {
+  elements.composer.hidden = true;
+  document.body.classList.remove("composer-open");
+  elements.taskForm.reset();
+  elements.taskTitle.removeAttribute("aria-invalid");
+  elements.titleError.hidden = true;
+  updateComposer();
+
+  if (returnFocus) {
+    const trigger = [...document.querySelectorAll('[data-action="open-composer"]')].find(
+      (button) => button.offsetParent !== null,
+    );
+    trigger?.focus();
+  }
+}
+
+function showToast(message, { actionLabel = null, action = null, duration = 6000 } = {}) {
+  window.clearTimeout(toastTimer);
+  elements.toastMessage.textContent = message;
+  elements.toastAction.hidden = !action;
+  elements.toastAction.textContent = actionLabel ?? "";
+  elements.toastAction.dataset.action = action ?? "";
+  elements.toast.hidden = false;
+  elements.toast.classList.remove("is-entering");
+  void elements.toast.offsetWidth;
+  elements.toast.classList.add("is-entering");
+  toastTimer = window.setTimeout(hideToast, duration);
+}
+
+function hideToast() {
+  elements.toast.hidden = true;
+  elements.toast.classList.remove("is-entering");
+  elements.toastAction.dataset.action = "";
+}
+
+function moveTaskTo(taskId, targetQuadrant) {
+  const task = getTask(taskId);
+  if (!task || quadrantFor(task) === targetQuadrant) return;
+  const previousRects = captureTaskRects();
+  persist(moveTask(state, taskId, targetQuadrant));
+  openMoveTaskId = null;
+  editingTaskId = null;
+  render({ previousRects, focusId: taskId });
+  announce(`${task.title} moved to ${QUADRANTS[targetQuadrant].label}.`);
+}
+
+function deleteTaskWithUndo(taskId) {
+  const task = getTask(taskId);
+  if (!task) return;
+  const previousRects = captureTaskRects();
+  const result = deleteTask(state, taskId);
+  deletedForUndo = result.deleted;
+  persist(result.state);
+  openMoveTaskId = null;
+  editingTaskId = null;
+  render({ previousRects });
+  showToast("Task deleted.", { actionLabel: "Undo", action: "undo-delete" });
+  announce(`${task.title} deleted. Undo is available.`);
+}
+
+function undoDelete() {
+  if (!deletedForUndo) return;
+  const task = deletedForUndo.task;
+  persist(restoreDeletedTask(state, deletedForUndo));
+  deletedForUndo = null;
+  hideToast();
+  render({ arrivingId: task.id, focusId: task.id });
+  announce(`${task.title} restored.`);
+}
+
+function focusAfterCompletion(quadrantId) {
+  window.requestAnimationFrame(() => {
+    const quadrant = document.querySelector(`[data-quadrant="${quadrantId}"]`);
+    const nextTask = quadrant?.querySelector(".complete-button");
+    if (nextTask) nextTask.focus();
+    else if (!elements.completedToggle.hidden) elements.completedToggle.focus();
+  });
+}
+
+function toggleTaskCompletion(taskId) {
+  const task = getTask(taskId);
+  if (!task || pendingCompletions.has(taskId)) return;
+
+  if (task.completed) {
+    persist(setTaskCompleted(state, taskId, false));
+    render({ arrivingId: taskId, focusId: taskId });
+    announce(`${task.title} restored to ${QUADRANTS[quadrantFor(task)].label}.`);
+    return;
+  }
+
+  const taskElement = findTaskElement(taskId);
+  taskElement?.classList.add("is-completing");
+  taskElement?.querySelector(".complete-button")?.setAttribute("disabled", "");
+  pendingCompletions.add(taskId);
+  announce(`${task.title} completed.`);
+
+  window.setTimeout(
+    () => {
+      const previousRects = captureTaskRects();
+      const currentTask = getTask(taskId);
+      if (currentTask) persist(setTaskCompleted(state, taskId, true));
+      pendingCompletions.delete(taskId);
+      render({ previousRects });
+      focusAfterCompletion(quadrantFor(task));
+    },
+    motionQuery.matches ? 0 : 220,
+  );
+}
+
+function beginEditing(taskId) {
+  if (!getTask(taskId)) return;
+  editingTaskId = taskId;
+  openMoveTaskId = null;
+  render({ focusId: taskId });
+  window.requestAnimationFrame(() => {
+    const input = findTaskElement(taskId)?.querySelector(".edit-input");
+    input?.select();
+  });
+}
+
+function saveEdit(form) {
+  const taskId = form.dataset.editForm;
+  const input = form.elements.title;
+  const title = cleanTitle(input.value);
+  if (!title) {
+    input.setAttribute("aria-invalid", "true");
+    announce("Please enter a task title.");
+    input.focus();
+    return;
+  }
+
+  persist(editTaskTitle(state, taskId, title));
+  editingTaskId = null;
+  render({ focusId: taskId });
+  announce("Task title saved.");
+}
+
+function toggleMovePanel(taskId) {
+  openMoveTaskId = openMoveTaskId === taskId ? null : taskId;
+  editingTaskId = null;
+  render();
+  focusTask(taskId, openMoveTaskId === taskId ? ".move-option" : ".drag-handle");
+}
+
+function startPointerSession(event, handle) {
+  if (!event.isPrimary || event.button !== 0) return;
+  const taskElement = handle.closest(".task");
+  if (!taskElement) return;
+  const rect = taskElement.getBoundingClientRect();
+  pointerSession = {
+    pointerId: event.pointerId,
+    handle,
+    taskElement,
+    taskId: taskElement.dataset.taskId,
+    originQuadrant: taskElement.dataset.quadrant,
+    targetQuadrant: null,
+    startX: event.clientX,
+    startY: event.clientY,
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top,
+    started: false,
+    ghost: null,
+  };
+  handle.setPointerCapture(event.pointerId);
+}
+
+function beginDrag(event) {
+  const session = pointerSession;
+  if (!session || session.started) return;
+  session.started = true;
+  const rect = session.taskElement.getBoundingClientRect();
+  const ghost = session.taskElement.cloneNode(true);
+  ghost.classList.add("drag-ghost");
+  ghost.removeAttribute("data-task-id");
+  ghost.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.style.width = `${rect.width}px`;
+  ghost.style.left = `${rect.left}px`;
+  ghost.style.top = `${rect.top}px`;
+  session.ghost = ghost;
+  document.body.append(ghost);
+  document.body.classList.add("is-dragging");
+  document.querySelectorAll(".quadrant").forEach((quadrant) => {
+    quadrant.classList.add("is-drop-candidate");
+  });
+  session.taskElement.style.opacity = "0.28";
+  moveDragGhost(event);
+  announce(`Moving ${getTask(session.taskId)?.title}. Choose a quadrant.`);
+}
+
+function moveDragGhost(event) {
+  const session = pointerSession;
+  if (!session?.started) return;
+  session.ghost.style.left = `${event.clientX - session.offsetX}px`;
+  session.ghost.style.top = `${event.clientY - session.offsetY}px`;
+
+  const quadrant = document.elementFromPoint(event.clientX, event.clientY)?.closest(".quadrant");
+  const targetQuadrant = quadrant?.dataset.quadrant ?? null;
+  if (targetQuadrant === session.targetQuadrant) return;
+
+  document.querySelectorAll(".quadrant").forEach((element) => {
+    element.classList.toggle("is-drag-over", element === quadrant);
+  });
+  session.targetQuadrant = targetQuadrant;
+  if (targetQuadrant) announce(`Drop in ${QUADRANTS[targetQuadrant].label}.`);
+}
+
+function finishPointerSession(event) {
+  const session = pointerSession;
+  if (!session || event.pointerId !== session.pointerId) return;
+  const wasDragging = session.started;
+  const targetQuadrant = session.targetQuadrant;
+  const taskId = session.taskId;
+
+  try {
+    if (session.handle.hasPointerCapture(event.pointerId)) {
+      session.handle.releasePointerCapture(event.pointerId);
+    }
+  } catch {
+    // The pointer may already have been released by the browser.
+  }
+
+  session.ghost?.remove();
+  session.taskElement.style.opacity = "";
+  document.body.classList.remove("is-dragging");
+  document.querySelectorAll(".quadrant").forEach((quadrant) => {
+    quadrant.classList.remove("is-drop-candidate", "is-drag-over");
+  });
+  pointerSession = null;
+
+  if (wasDragging) {
+    suppressDragClick = true;
+    window.setTimeout(() => {
+      suppressDragClick = false;
+    }, 0);
+    if (targetQuadrant && targetQuadrant !== session.originQuadrant) {
+      moveTaskTo(taskId, targetQuadrant);
+    } else {
+      announce("Task stayed in its current quadrant.");
+      findTaskElement(taskId)?.querySelector(".drag-handle")?.focus();
+    }
+  }
+}
+
+elements.taskForm.addEventListener("input", updateComposer);
+elements.taskForm.addEventListener("change", updateComposer);
+elements.taskForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const title = cleanTitle(elements.taskTitle.value);
+  const signals = composerSignals();
+  const quadrantId = quadrantFor(signals);
+
+  if (!title) {
+    elements.taskTitle.setAttribute("aria-invalid", "true");
+    elements.titleError.hidden = false;
+    elements.taskTitle.focus();
+    announce("Please enter a task.");
+    return;
+  }
+
+  if (!quadrantId) {
+    announce("Choose whether the task is important and urgent.");
+    return;
+  }
+
+  const previousRects = captureTaskRects();
+  const result = addTask(state, { title, ...signals });
+  persist(result.state);
+  openMoveTaskId = null;
+  editingTaskId = null;
+  closeComposer({ returnFocus: false });
+  render({ previousRects, arrivingId: result.task.id, focusId: result.task.id });
+  announce(`${result.task.title} added to ${QUADRANTS[quadrantId].label}.`);
+});
+
+elements.completedToggle.addEventListener("click", () => {
+  showCompleted = !showCompleted;
+  openMoveTaskId = null;
+  editingTaskId = null;
+  render();
+  elements.completedToggle.focus();
+});
+
+document.addEventListener("submit", (event) => {
+  const form = event.target.closest(".edit-form");
+  if (!form) return;
+  event.preventDefault();
+  saveEdit(form);
+});
+
+document.addEventListener("input", (event) => {
+  if (event.target.matches(".edit-input")) event.target.removeAttribute("aria-invalid");
+});
+
+document.addEventListener("click", (event) => {
+  const target = event.target.closest("[data-action]");
+  if (!target) return;
+  const { action, taskId, targetQuadrant } = target.dataset;
+
+  if (action === "toggle-move" && suppressDragClick) {
+    suppressDragClick = false;
+    event.preventDefault();
+    return;
+  }
+
+  switch (action) {
+    case "open-composer":
+      openComposer();
+      break;
+    case "close-composer":
+      closeComposer();
+      break;
+    case "dismiss-storage-banner":
+      elements.storageBanner.hidden = true;
+      break;
+    case "edit-task":
+      beginEditing(taskId);
+      break;
+    case "cancel-edit":
+      editingTaskId = null;
+      render({ focusId: taskId });
+      break;
+    case "toggle-complete":
+      toggleTaskCompletion(taskId);
+      break;
+    case "toggle-move":
+      toggleMovePanel(taskId);
+      break;
+    case "move-task":
+      moveTaskTo(taskId, targetQuadrant);
+      break;
+    case "delete-task":
+      deleteTaskWithUndo(taskId);
+      break;
+    case "undo-delete":
+      undoDelete();
+      break;
+    default:
+      break;
+  }
+});
+
+document.addEventListener("pointerdown", (event) => {
+  const handle = event.target.closest(".drag-handle");
+  if (handle) startPointerSession(event, handle);
+});
+
+document.addEventListener("pointermove", (event) => {
+  if (!pointerSession || event.pointerId !== pointerSession.pointerId) return;
+  const distance = Math.hypot(
+    event.clientX - pointerSession.startX,
+    event.clientY - pointerSession.startY,
+  );
+  if (!pointerSession.started && distance >= 6) beginDrag(event);
+  if (pointerSession.started) {
+    event.preventDefault();
+    moveDragGhost(event);
+  }
+});
+
+document.addEventListener("pointerup", finishPointerSession);
+document.addEventListener("pointercancel", finishPointerSession);
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && event.target.matches(".edit-input")) {
+    event.preventDefault();
+    saveEdit(event.target.closest(".edit-form"));
+    return;
+  }
+
+  const isTyping = event.target.matches("input, textarea, [contenteditable='true']");
+  if (
+    event.key.toLowerCase() === "n" &&
+    !isTyping &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey
+  ) {
+    event.preventDefault();
+    openComposer();
+    return;
+  }
+
+  if (event.key !== "Escape") return;
+  if (!elements.composer.hidden) {
+    closeComposer();
+  } else if (editingTaskId) {
+    const taskId = editingTaskId;
+    editingTaskId = null;
+    render({ focusId: taskId });
+  } else if (openMoveTaskId) {
+    const taskId = openMoveTaskId;
+    openMoveTaskId = null;
+    render();
+    focusTask(taskId, ".drag-handle");
+  }
+});
+
+window.addEventListener("storage", (event) => {
+  if (event.key !== STORAGE_KEY || event.newValue === null) return;
+  const externalState = parseExternalState(event.newValue);
+  if (!externalState) {
+    showStorageBanner("Another tab saved task data this page could not read. Reload to try again.");
+    return;
+  }
+  if (externalState.revision < state.revision) return;
+
+  state = externalState;
+  editingTaskId = null;
+  openMoveTaskId = null;
+  render();
+  showToast("Matrix updated in another tab.", { duration: 3200 });
+});
+
+if (storageResult.error) {
+  setSaveStatus("Not saved after reload");
+  showStorageBanner(
+    "Tasks will work for this visit, but this browser is blocking local storage.",
+  );
+} else if (initial.issue) {
+  showStorageBanner(initial.issue);
+}
+
+updateComposer();
+render();

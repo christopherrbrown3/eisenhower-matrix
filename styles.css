@@ -451,6 +451,14 @@ svg {
   font-size: var(--text-small);
 }
 
+.signal-fieldset[aria-invalid="true"] legend {
+  color: var(--color-error);
+}
+
+.signal-error {
+  margin-block-start: var(--space-xs);
+}
+
 .signal-fieldset {
   padding: 0;
   border: 0;
@@ -942,6 +950,11 @@ body.composer-open .first-run {
 .quadrant.is-drop-candidate {
   outline: 0.125rem solid var(--quadrant-line);
   outline-offset: -0.25rem;
+}
+
+.matrix:focus-visible {
+  outline: 0.1875rem solid var(--color-focus);
+  outline-offset: 0.1875rem;
 }
 
 .quadrant.is-drag-over {

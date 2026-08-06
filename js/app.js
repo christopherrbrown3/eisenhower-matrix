@@ -26,6 +26,8 @@ const elements = {
   createTaskButton: document.querySelector("#create-task-button"),
   destinationPreview: document.querySelector("#destination-preview"),
   firstRun: document.querySelector("#first-run"),
+  importantFieldset: document.querySelector('[data-signal="important"]'),
+  importantError: document.querySelector("#important-error"),
   matrix: document.querySelector("#matrix"),
   saveStatus: document.querySelector("#save-status-text"),
   storageBanner: document.querySelector("#storage-banner"),
@@ -36,6 +38,8 @@ const elements = {
   toast: document.querySelector("#toast"),
   toastAction: document.querySelector("#toast-action"),
   toastMessage: document.querySelector("#toast-message"),
+  urgentFieldset: document.querySelector('[data-signal="urgent"]'),
+  urgentError: document.querySelector("#urgent-error"),
 };
 
 const ICON_PATHS = Object.freeze({
@@ -56,6 +60,7 @@ let editingTaskId = null;
 let openMoveTaskId = null;
 let deletedForUndo = null;
 let toastTimer = 0;
+let composerReturnFocus = null;
 let pointerSession = null;
 let suppressDragClick = false;
 const pendingCompletions = new Set();
@@ -205,6 +210,8 @@ function createMovePanel(task, currentQuadrant) {
   const panel = document.createElement("div");
   panel.className = "move-panel";
   panel.id = `move-options-${task.id}`;
+  panel.setAttribute("role", "group");
+  panel.setAttribute("aria-label", `Move ${task.title} to another quadrant`);
 
   const label = document.createElement("span");
   label.className = "move-panel-label";
@@ -245,7 +252,9 @@ function createTaskElement(task, quadrantId, arrivingId) {
   dragHandle.dataset.taskId = task.id;
   dragHandle.setAttribute("aria-label", `Move ${task.title}`);
   dragHandle.setAttribute("aria-expanded", String(openMoveTaskId === task.id));
-  dragHandle.setAttribute("aria-controls", `move-options-${task.id}`);
+  if (openMoveTaskId === task.id) {
+    dragHandle.setAttribute("aria-controls", `move-options-${task.id}`);
+  }
   dragHandle.title = "Drag or choose a quadrant";
   const dots = document.createElement("span");
   dots.className = "drag-dots";
@@ -349,6 +358,31 @@ function composerSignals() {
   };
 }
 
+function clearSignalError(signal) {
+  const fieldset = signal === "important" ? elements.importantFieldset : elements.urgentFieldset;
+  const error = signal === "important" ? elements.importantError : elements.urgentError;
+  fieldset.removeAttribute("aria-invalid");
+  error.hidden = true;
+  error.textContent = "";
+}
+
+function clearSignalErrors() {
+  clearSignalError("important");
+  clearSignalError("urgent");
+}
+
+function showSignalError(signal) {
+  const fieldset = signal === "important" ? elements.importantFieldset : elements.urgentFieldset;
+  const error = signal === "important" ? elements.importantError : elements.urgentError;
+  const label = signal === "important" ? "important" : "urgent";
+  fieldset.setAttribute("aria-invalid", "true");
+  error.textContent = `Choose whether this task is ${label}.`;
+  error.hidden = false;
+  const input = elements.taskForm.querySelector(`input[name="${signal}"]`);
+  window.requestAnimationFrame(() => input?.focus());
+  announce(`Choose whether the task is ${label}.`);
+}
+
 function updateComposer() {
   const title = cleanTitle(elements.taskTitle.value);
   const signals = composerSignals();
@@ -368,14 +402,23 @@ function updateComposer() {
     elements.taskTitle.removeAttribute("aria-invalid");
     elements.titleError.hidden = true;
   }
+
+  for (const signal of ["important", "urgent"]) {
+    if (elements.taskForm.elements[signal].value !== "") clearSignalError(signal);
+  }
 }
 
-function openComposer() {
+function openComposer(trigger = null) {
   if (!elements.composer.hidden) {
     elements.taskTitle.focus();
     return;
   }
 
+  composerReturnFocus = trigger?.matches("button, a")
+    ? trigger
+    : document.activeElement?.matches?.("button, a")
+      ? document.activeElement
+      : null;
   elements.composer.hidden = false;
   document.body.classList.add("composer-open");
   if (!motionQuery.matches) {
@@ -393,22 +436,30 @@ function openComposer() {
 }
 
 function closeComposer({ returnFocus = true } = {}) {
+  const returnTarget = composerReturnFocus;
+  composerReturnFocus = null;
   elements.composer.hidden = true;
   document.body.classList.remove("composer-open");
   elements.taskForm.reset();
   elements.taskTitle.removeAttribute("aria-invalid");
   elements.titleError.hidden = true;
+  clearSignalErrors();
   updateComposer();
 
   if (returnFocus) {
-    const trigger = [...document.querySelectorAll('[data-action="open-composer"]')].find(
-      (button) => button.offsetParent !== null,
-    );
+    const canFocus = (button) => {
+      if (!button || !button.isConnected || button.disabled) return false;
+      const styles = window.getComputedStyle(button);
+      return styles.display !== "none" && styles.visibility !== "hidden" && button.getClientRects().length > 0;
+    };
+    const trigger = canFocus(returnTarget)
+      ? returnTarget
+      : [...document.querySelectorAll('[data-action="open-composer"]')].find(canFocus);
     trigger?.focus();
   }
 }
 
-function showToast(message, { actionLabel = null, action = null, duration = 6000 } = {}) {
+function showToast(message, { actionLabel = null, action = null, duration = 9000 } = {}) {
   window.clearTimeout(toastTimer);
   elements.toastMessage.textContent = message;
   elements.toastAction.hidden = !action;
@@ -638,6 +689,11 @@ function finishPointerSession(event) {
 
 elements.taskForm.addEventListener("input", updateComposer);
 elements.taskForm.addEventListener("change", updateComposer);
+elements.taskForm.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.target !== elements.taskTitle) return;
+  event.preventDefault();
+  elements.taskForm.requestSubmit();
+});
 elements.taskForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const title = cleanTitle(elements.taskTitle.value);
@@ -653,7 +709,7 @@ elements.taskForm.addEventListener("submit", (event) => {
   }
 
   if (!quadrantId) {
-    announce("Choose whether the task is important and urgent.");
+    showSignalError(signals.important === null ? "important" : "urgent");
     return;
   }
 
@@ -699,7 +755,7 @@ document.addEventListener("click", (event) => {
 
   switch (action) {
     case "open-composer":
-      openComposer();
+      openComposer(target);
       break;
     case "close-composer":
       closeComposer();

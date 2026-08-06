@@ -99,6 +99,7 @@
                   <span>Not important</span>
                 </label>
               </div>
+              <p id="important-error" class="field-error signal-error" hidden></p>
             </fieldset>
 
             <fieldset class="signal-fieldset" data-signal="urgent">
@@ -114,6 +115,7 @@
                   <span>Not urgent</span>
                 </label>
               </div>
+              <p id="urgent-error" class="field-error signal-error" hidden></p>
             </fieldset>
           </div>
 
@@ -134,7 +136,7 @@
           <p><strong>Add a task.</strong> Answer two questions, and we’ll place it for you.</p>
           <button class="text-button" type="button" data-action="open-composer">Add task</button>
         </section>
-        <div id="matrix" class="matrix" aria-label="Eisenhower Matrix">
+        <div id="matrix" class="matrix" aria-label="Eisenhower Matrix" tabindex="-1">
           <section class="quadrant quadrant--do" data-quadrant="do" aria-labelledby="do-heading">
             <header class="quadrant-header">
               <div class="quadrant-title-group">

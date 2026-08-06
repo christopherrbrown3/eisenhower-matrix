@@ -84,7 +84,7 @@ html {
 body {
   min-height: 100dvh;
   margin: 0;
-  padding-block-end: calc(5.5rem + env(safe-area-inset-bottom));
+  padding-block-end: 0;
   color: var(--color-ink);
   background: var(--color-canvas);
   font-size: var(--text-body);
@@ -590,6 +590,10 @@ svg {
   font-weight: var(--weight-medium);
 }
 
+.first-run .text-button {
+  white-space: nowrap;
+}
+
 body.composer-open .first-run {
   display: none;
 }
@@ -1046,8 +1050,8 @@ kbd {
 
 .mobile-add {
   position: fixed;
-  inset-inline: var(--space-md);
-  inset-block-end: max(var(--space-md), env(safe-area-inset-bottom));
+  inset-block-start: max(var(--space-sm), env(safe-area-inset-top));
+  inset-inline-end: var(--space-md);
   z-index: var(--z-sticky);
   min-height: 3.25rem;
 }
@@ -1059,7 +1063,7 @@ body.composer-open .mobile-add {
 .toast {
   position: fixed;
   inset-inline: var(--space-md);
-  inset-block-end: calc(5rem + env(safe-area-inset-bottom));
+  inset-block-end: max(var(--space-md), env(safe-area-inset-bottom));
   z-index: var(--z-toast);
   display: flex;
   align-items: center;
@@ -1197,9 +1201,23 @@ body.composer-open .mobile-add {
   }
 
   .quadrant {
-    min-height: 17rem;
+    display: flex;
+    flex-direction: column;
+    height: clamp(18rem, 42vh, 32rem);
+    min-height: 0;
+    overflow: hidden;
     border: 0;
     border-radius: 0;
+  }
+
+  .quadrant .task-list {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+  }
+
+  .quadrant .quadrant-empty {
+    flex: 1 1 auto;
   }
 
   .quadrant:nth-child(odd) {
@@ -1279,6 +1297,12 @@ body.composer-open .mobile-add {
   .app-footer {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 22rem) {
+  .mobile-add span {
+    display: none;
   }
 }
 

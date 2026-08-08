@@ -20,7 +20,7 @@ The product asks two questions—whether a task is important and whether it is u
 - **Resilient storage:** Invalid saved records are isolated, valid tasks are preserved, and cross-tab changes are detected.
 - **Responsive interface:** The desktop matrix becomes four legible stacked sections on mobile without losing functionality.
 - **Accessible interaction:** Keyboard shortcuts, semantic controls, visible focus states, live announcements, and reduced-motion support are built in.
-- **Static deployment:** The app is plain HTML, CSS, and JavaScript with no framework, backend, dependency install, or build step.
+- **Static deployment:** The app ships as plain HTML, CSS, and JavaScript with no framework, backend, or runtime dependencies.
 
 ## How the matrix works
 
@@ -45,7 +45,7 @@ This version intentionally has no dates, reminders, weekly reviews, projects, ta
 
 ## Run locally
 
-No dependencies or build step are required.
+Open `index.html` directly, or run a small local server:
 
 ```sh
 npm run serve
@@ -53,13 +53,15 @@ npm run serve
 
 Then open [http://localhost:4173](http://localhost:4173).
 
+No dependency installation is required. If you change the modular JavaScript source, rebuild the browser-ready entry point with `npm run build`.
+
 ## Verify the app
 
 ```sh
 npm run check
 ```
 
-The checks use Node's built-in test runner and syntax checker. They cover classification, task operations, state normalization, local-storage availability, persistence, recovery, and external updates.
+The checks rebuild the browser entry point, then use Node's built-in test runner and syntax checker. They cover classification, task operations, state normalization, local-storage availability, persistence, recovery, and external updates.
 
 ## Data and privacy
 

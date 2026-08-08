@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node scripts/build.mjs",
     "test": "node --test",
-    "check": "node --test && node --check js/app.js && node --check js/model.js && node --check js/storage.js",
+    "check": "npm run build && node --test && node --check js/app.js && node --check js/model.js && node --check js/storage.js && node --check js/app.bundle.js",
     "serve": "python3 -m http.server 4173"
   }
 }

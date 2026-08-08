@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#ffffff">
+    <meta name="theme-color" content="#17211d">
     <meta
       name="description"
       content="A lightweight Eisenhower Matrix for deciding what to do, schedule, delegate, or eliminate."
@@ -11,7 +11,7 @@
     <title>Eisenhower Matrix</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="styles.css">
-    <script type="module" src="js/app.js"></script>
+    <script defer src="js/app.bundle.js"></script>
   </head>
   <body>
     <a class="skip-link" href="#matrix">Skip to the matrix</a>
@@ -25,11 +25,14 @@
       </div>
 
       <header class="app-header">
-        <a class="brand" href="./" aria-label="Eisenhower Matrix home">
+        <a class="brand" href="./" aria-label="Eisenhower Priority matrix home">
           <span class="brand-mark" aria-hidden="true">
             <span></span><span></span><span></span><span></span>
           </span>
-          <span class="brand-name">Eisenhower Matrix</span>
+          <span class="brand-lockup">
+            <span class="brand-name">Eisenhower</span>
+            <span class="brand-subtitle">Priority matrix</span>
+          </span>
         </a>
 
         <div class="header-actions">
@@ -43,7 +46,7 @@
             Show completed
           </button>
           <button class="primary-button desktop-add" type="button" data-action="open-composer">
-            <span>Add task</span>
+            <span>New task</span>
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M12 5v14M5 12h14"></path>
             </svg>
@@ -55,8 +58,8 @@
         <form id="task-form" novalidate>
           <div class="composer-heading-row">
             <div>
-              <h2 id="composer-heading">Place a new task</h2>
-              <p>Give it a name, then separate importance from urgency.</p>
+              <h2 id="composer-heading">Classify a task</h2>
+              <p>Name the work. Decide importance first, then urgency.</p>
             </div>
             <button
               class="icon-button"
@@ -72,7 +75,10 @@
 
           <div class="composer-grid">
             <div class="title-field">
-              <label for="task-title">What needs attention?</label>
+              <label for="task-title">
+                <span class="field-step" aria-hidden="true">1</span>
+                <span>What needs attention?</span>
+              </label>
               <input
                 id="task-title"
                 name="title"
@@ -87,32 +93,38 @@
             </div>
 
             <fieldset class="signal-fieldset" data-signal="important">
-              <legend>Is it important?</legend>
-              <p id="important-hint">Does it advance a goal or prevent a meaningful problem?</p>
+              <legend>
+                <span class="field-step" aria-hidden="true">2</span>
+                <span>Is it important?</span>
+              </legend>
+              <p id="important-hint">Moves a goal forward or prevents meaningful harm.</p>
               <div class="choice-group" aria-describedby="important-hint">
                 <label class="choice-option">
                   <input type="radio" name="important" value="true">
-                  <span>Important</span>
+                  <span>Yes, important</span>
                 </label>
                 <label class="choice-option">
                   <input type="radio" name="important" value="false">
-                  <span>Not important</span>
+                  <span>No, not important</span>
                 </label>
               </div>
               <p id="important-error" class="field-error signal-error" hidden></p>
             </fieldset>
 
             <fieldset class="signal-fieldset" data-signal="urgent">
-              <legend>Is it urgent?</legend>
-              <p id="urgent-hint">Does it need attention soon or carry immediate consequences?</p>
+              <legend>
+                <span class="field-step" aria-hidden="true">3</span>
+                <span>Is it urgent?</span>
+              </legend>
+              <p id="urgent-hint">Needs attention soon or has immediate consequences.</p>
               <div class="choice-group" aria-describedby="urgent-hint">
                 <label class="choice-option">
                   <input type="radio" name="urgent" value="true">
-                  <span>Urgent</span>
+                  <span>Yes, urgent</span>
                 </label>
                 <label class="choice-option">
                   <input type="radio" name="urgent" value="false">
-                  <span>Not urgent</span>
+                  <span>No, not urgent</span>
                 </label>
               </div>
               <p id="urgent-error" class="field-error signal-error" hidden></p>
@@ -132,9 +144,21 @@
       </section>
 
       <main id="main-content">
+        <h1 class="sr-only">Eisenhower Matrix task board</h1>
         <section id="first-run" class="first-run" aria-label="Getting started" hidden>
-          <p><strong>Add a task.</strong> Answer two questions, and we’ll place it for you.</p>
-          <button class="text-button" type="button" data-action="open-composer">Add task</button>
+          <span class="first-run-mark" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+          </span>
+          <div class="first-run-copy">
+            <h2>Make the next decision obvious.</h2>
+            <p>Add one task, answer two questions, and let the matrix separate meaningful work from urgent noise.</p>
+          </div>
+          <button class="primary-button first-run-action" type="button" data-action="open-composer">
+            <span>Add your first task</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M12 5v14M5 12h14"></path>
+            </svg>
+          </button>
         </section>
         <div id="matrix" class="matrix" aria-label="Eisenhower Matrix" tabindex="-1">
           <section class="quadrant quadrant--do" data-quadrant="do" aria-labelledby="do-heading">
@@ -143,7 +167,7 @@
                 <span class="quadrant-symbol" aria-hidden="true"></span>
                 <div>
                   <h2 id="do-heading">Do now</h2>
-                  <p>Important + urgent</p>
+                  <p><span>Important + urgent</span><span class="quadrant-guidance">Act first</span></p>
                 </div>
               </div>
               <span class="quadrant-count" data-count-for="do" aria-label="0 tasks">0</span>
@@ -162,7 +186,7 @@
                 <span class="quadrant-symbol" aria-hidden="true"></span>
                 <div>
                   <h2 id="schedule-heading">Schedule</h2>
-                  <p>Important, not urgent</p>
+                  <p><span>Important, not urgent</span><span class="quadrant-guidance">Protect time</span></p>
                 </div>
               </div>
               <span class="quadrant-count" data-count-for="schedule" aria-label="0 tasks">0</span>
@@ -181,7 +205,7 @@
                 <span class="quadrant-symbol" aria-hidden="true"></span>
                 <div>
                   <h2 id="delegate-heading">Delegate</h2>
-                  <p>Urgent, not important</p>
+                  <p><span>Urgent, not important</span><span class="quadrant-guidance">Hand off</span></p>
                 </div>
               </div>
               <span class="quadrant-count" data-count-for="delegate" aria-label="0 tasks">0</span>
@@ -200,7 +224,7 @@
                 <span class="quadrant-symbol" aria-hidden="true"></span>
                 <div>
                   <h2 id="eliminate-heading">Eliminate</h2>
-                  <p>Neither important nor urgent</p>
+                  <p><span>Neither important nor urgent</span><span class="quadrant-guidance">Let go</span></p>
                 </div>
               </div>
               <span class="quadrant-count" data-count-for="eliminate" aria-label="0 tasks">0</span>
@@ -226,9 +250,9 @@
       class="primary-button mobile-add"
       type="button"
       data-action="open-composer"
-      aria-label="Add task"
+      aria-label="New task"
     >
-      <span>Add task</span>
+      <span>New task</span>
       <svg aria-hidden="true" viewBox="0 0 24 24">
         <path d="M12 5v14M5 12h14"></path>
       </svg>

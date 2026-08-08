@@ -7,6 +7,7 @@ import {
   quadrantFor,
   QUADRANTS,
   QUADRANT_IDS,
+  reorderTask,
   restoreDeletedTask,
   setTaskCompleted,
   tasksForQuadrant,
@@ -43,6 +44,8 @@ const elements = {
 };
 
 const ICON_PATHS = Object.freeze({
+  arrowDown: ["M12 5v14", "m6 13 6 6 6-6"],
+  arrowUp: ["M12 19V5", "m6 11 6-6 6 6"],
   check: ["M5 12.5 9.5 17 19 7"],
   close: ["m6 6 12 12", "M18 6 6 18"],
   move: ["M12 4v16", "m7 9 5-5 5 5", "m7 15 5 5 5-5"],
@@ -130,6 +133,13 @@ function getTask(taskId) {
   return state.tasks.find((task) => task.id === taskId) ?? null;
 }
 
+function orderedPeersFor(task) {
+  if (!task) return [];
+  return tasksForQuadrant(state, quadrantFor(task), true).filter(
+    (peer) => peer.completed === task.completed,
+  );
+}
+
 function findTaskElement(taskId) {
   return [...document.querySelectorAll(".task[data-task-id]")].find(
     (element) => element.dataset.taskId === taskId && !element.classList.contains("drag-ghost"),
@@ -206,29 +216,95 @@ function createEditForm(task) {
   return form;
 }
 
+function createMoveOption({
+  action,
+  taskId,
+  label,
+  icon = null,
+  disabled = false,
+  data = {},
+}) {
+  const option = document.createElement("button");
+  option.type = "button";
+  option.className = icon ? "move-option reorder-option" : "move-option";
+  option.dataset.action = action;
+  option.dataset.taskId = taskId;
+  Object.assign(option.dataset, data);
+  option.disabled = disabled;
+
+  if (icon) {
+    option.append(createSvgIcon(icon));
+    const text = document.createElement("span");
+    text.textContent = label;
+    option.append(text);
+  } else {
+    option.textContent = label;
+  }
+
+  return option;
+}
+
 function createMovePanel(task, currentQuadrant) {
   const panel = document.createElement("div");
   panel.className = "move-panel";
   panel.id = `move-options-${task.id}`;
   panel.setAttribute("role", "group");
-  panel.setAttribute("aria-label", `Move ${task.title} to another quadrant`);
+  panel.setAttribute("aria-label", `Move or reorder ${task.title}`);
+
+  const peers = orderedPeersFor(task);
+  const taskIndex = peers.findIndex((peer) => peer.id === task.id);
+  const orderGroup = document.createElement("div");
+  orderGroup.className = "move-panel-group";
+  orderGroup.setAttribute("role", "group");
+  orderGroup.setAttribute("aria-label", `Change ${task.title} order`);
+
+  const orderLabel = document.createElement("span");
+  orderLabel.className = "move-panel-label";
+  orderLabel.textContent = "Order";
+  orderGroup.append(
+    orderLabel,
+    createMoveOption({
+      action: "reorder-task",
+      taskId: task.id,
+      label: "Move up",
+      icon: "arrowUp",
+      disabled: taskIndex <= 0,
+      data: { direction: "up" },
+    }),
+    createMoveOption({
+      action: "reorder-task",
+      taskId: task.id,
+      label: "Move down",
+      icon: "arrowDown",
+      disabled: taskIndex < 0 || taskIndex >= peers.length - 1,
+      data: { direction: "down" },
+    }),
+  );
+  panel.append(orderGroup);
+
+  const quadrantGroup = document.createElement("div");
+  quadrantGroup.className = "move-panel-group";
+  quadrantGroup.setAttribute("role", "group");
+  quadrantGroup.setAttribute("aria-label", `Move ${task.title} to another quadrant`);
 
   const label = document.createElement("span");
   label.className = "move-panel-label";
-  label.textContent = "Move to";
-  panel.append(label);
+  label.textContent = "Quadrant";
+  quadrantGroup.append(label);
 
   for (const quadrantId of QUADRANT_IDS) {
     if (quadrantId === currentQuadrant) continue;
-    const option = document.createElement("button");
-    option.type = "button";
-    option.className = "move-option";
-    option.dataset.action = "move-task";
-    option.dataset.taskId = task.id;
-    option.dataset.targetQuadrant = quadrantId;
-    option.textContent = QUADRANTS[quadrantId].label;
-    panel.append(option);
+    quadrantGroup.append(
+      createMoveOption({
+        action: "move-task",
+        taskId: task.id,
+        label: QUADRANTS[quadrantId].label,
+        data: { targetQuadrant: quadrantId },
+      }),
+    );
   }
+
+  panel.append(quadrantGroup);
 
   return panel;
 }
@@ -250,12 +326,12 @@ function createTaskElement(task, quadrantId, arrivingId) {
   dragHandle.className = "drag-handle";
   dragHandle.dataset.action = "toggle-move";
   dragHandle.dataset.taskId = task.id;
-  dragHandle.setAttribute("aria-label", `Move ${task.title}`);
+  dragHandle.setAttribute("aria-label", `Move or reorder ${task.title}`);
   dragHandle.setAttribute("aria-expanded", String(openMoveTaskId === task.id));
   if (openMoveTaskId === task.id) {
     dragHandle.setAttribute("aria-controls", `move-options-${task.id}`);
   }
-  dragHandle.title = "Drag or choose a quadrant";
+  dragHandle.title = "Drag to reorder or move";
   const dots = document.createElement("span");
   dots.className = "drag-dots";
   dots.setAttribute("aria-hidden", "true");
@@ -489,6 +565,62 @@ function moveTaskTo(taskId, targetQuadrant) {
   announce(`${task.title} moved to ${QUADRANTS[targetQuadrant].label}.`);
 }
 
+function focusReorderControl(taskId, direction) {
+  window.requestAnimationFrame(() => {
+    const taskElement = findTaskElement(taskId);
+    const sameDirection = taskElement?.querySelector(
+      `[data-action="reorder-task"][data-direction="${direction}"]:not(:disabled)`,
+    );
+    const otherDirection = taskElement?.querySelector(
+      `[data-action="reorder-task"]:not([data-direction="${direction}"]):not(:disabled)`,
+    );
+    (sameDirection ?? otherDirection ?? taskElement?.querySelector(".drag-handle"))?.focus();
+  });
+}
+
+function reorderTaskBefore(
+  taskId,
+  beforeTaskId,
+  { direction = null, keepPanelOpen = false } = {},
+) {
+  const task = getTask(taskId);
+  if (!task) return false;
+
+  const previousRects = captureTaskRects();
+  const nextState = reorderTask(state, taskId, beforeTaskId);
+  if (nextState === state) return false;
+
+  persist(nextState);
+  editingTaskId = null;
+  if (!keepPanelOpen) openMoveTaskId = null;
+  render({ previousRects });
+
+  if (keepPanelOpen && direction) focusReorderControl(taskId, direction);
+  else focusTask(taskId, ".drag-handle");
+
+  const updatedTask = getTask(taskId);
+  const peers = orderedPeersFor(updatedTask);
+  const position = peers.findIndex((peer) => peer.id === taskId) + 1;
+  const movement = direction ? `moved ${direction}` : "moved";
+  announce(
+    `${task.title} ${movement}. Position ${position} of ${peers.length} in ${QUADRANTS[quadrantFor(updatedTask)].label}.`,
+  );
+  return true;
+}
+
+function reorderTaskByDirection(taskId, direction) {
+  if (direction !== "up" && direction !== "down") return;
+  const task = getTask(taskId);
+  const peers = orderedPeersFor(task);
+  const taskIndex = peers.findIndex((peer) => peer.id === taskId);
+  const targetIndex = direction === "up" ? taskIndex - 1 : taskIndex + 1;
+  if (taskIndex < 0 || targetIndex < 0 || targetIndex >= peers.length) return;
+
+  const beforeTaskId =
+    direction === "up" ? peers[targetIndex].id : peers[targetIndex + 1]?.id ?? null;
+  reorderTaskBefore(taskId, beforeTaskId, { direction, keepPanelOpen: true });
+}
+
 function deleteTaskWithUndo(taskId) {
   const task = getTask(taskId);
   if (!task) return;
@@ -584,7 +716,104 @@ function toggleMovePanel(taskId) {
   openMoveTaskId = openMoveTaskId === taskId ? null : taskId;
   editingTaskId = null;
   render();
-  focusTask(taskId, openMoveTaskId === taskId ? ".move-option" : ".drag-handle");
+  focusTask(
+    taskId,
+    openMoveTaskId === taskId ? ".move-option:not(:disabled)" : ".drag-handle",
+  );
+}
+
+function clearReorderIndicators() {
+  document.querySelectorAll(".is-reorder-before, .is-reorder-after").forEach((task) => {
+    task.classList.remove("is-reorder-before", "is-reorder-after");
+  });
+}
+
+function stopDragAutoScroll(session) {
+  if (session.autoScrollFrame) window.cancelAnimationFrame(session.autoScrollFrame);
+  session.autoScrollFrame = 0;
+  session.autoScrollList = null;
+  session.autoScrollVelocity = 0;
+}
+
+function continueDragAutoScroll() {
+  const session = pointerSession;
+  if (!session?.started || !session.autoScrollList || !session.autoScrollVelocity) return;
+
+  const previousScrollTop = session.autoScrollList.scrollTop;
+  session.autoScrollList.scrollTop += session.autoScrollVelocity;
+  if (session.autoScrollList.scrollTop === previousScrollTop) {
+    session.autoScrollFrame = 0;
+    return;
+  }
+
+  const quadrant = session.autoScrollList.closest(".quadrant");
+  if (quadrant && session.targetQuadrant === session.originQuadrant) {
+    updateReorderTarget(session, quadrant, session.lastClientY);
+  }
+  session.autoScrollFrame = window.requestAnimationFrame(continueDragAutoScroll);
+}
+
+function updateDragAutoScroll(session, quadrant, clientY) {
+  const list = quadrant.querySelector(".task-list");
+  if (!list || list.scrollHeight <= list.clientHeight) {
+    stopDragAutoScroll(session);
+    return;
+  }
+
+  const rect = list.getBoundingClientRect();
+  const edgeSize = Math.min(48, rect.height / 3);
+  let velocity = 0;
+  if (clientY < rect.top + edgeSize) {
+    velocity = -Math.ceil(12 * (1 - Math.max(0, clientY - rect.top) / edgeSize));
+  } else if (clientY > rect.bottom - edgeSize) {
+    velocity = Math.ceil(12 * (1 - Math.max(0, rect.bottom - clientY) / edgeSize));
+  }
+
+  session.lastClientY = clientY;
+  if (!velocity) {
+    stopDragAutoScroll(session);
+    return;
+  }
+
+  session.autoScrollList = list;
+  session.autoScrollVelocity = velocity;
+  if (!session.autoScrollFrame) {
+    session.autoScrollFrame = window.requestAnimationFrame(continueDragAutoScroll);
+  }
+}
+
+function updateReorderTarget(session, quadrant, clientY) {
+  const task = getTask(session.taskId);
+  const candidates = [...quadrant.querySelectorAll(".task[data-task-id]")].filter(
+    (element) =>
+      element !== session.taskElement &&
+      element.classList.contains("is-completed") === task?.completed,
+  );
+  const before = candidates.find((element) => {
+    const rect = element.getBoundingClientRect();
+    return clientY < rect.top + rect.height / 2;
+  });
+  const last = candidates[candidates.length - 1] ?? null;
+  const key = before
+    ? `before:${before.dataset.taskId}`
+    : last
+      ? `after:${last.dataset.taskId}`
+      : "none";
+
+  session.targetBeforeTaskId = before?.dataset.taskId ?? null;
+  session.canReorder = candidates.length > 0;
+  if (key === session.reorderKey) return;
+
+  clearReorderIndicators();
+  session.reorderKey = key;
+  if (before) before.classList.add("is-reorder-before");
+  else last?.classList.add("is-reorder-after");
+
+  if (before) {
+    announce(`Drop before ${getTask(before.dataset.taskId)?.title}.`);
+  } else if (last) {
+    announce(`Drop after ${getTask(last.dataset.taskId)?.title}.`);
+  }
 }
 
 function startPointerSession(event, handle) {
@@ -599,6 +828,13 @@ function startPointerSession(event, handle) {
     taskId: taskElement.dataset.taskId,
     originQuadrant: taskElement.dataset.quadrant,
     targetQuadrant: null,
+    targetBeforeTaskId: null,
+    canReorder: false,
+    reorderKey: null,
+    autoScrollFrame: 0,
+    autoScrollList: null,
+    autoScrollVelocity: 0,
+    lastClientY: event.clientY,
     startX: event.clientX,
     startY: event.clientY,
     offsetX: event.clientX - rect.left,
@@ -630,7 +866,7 @@ function beginDrag(event) {
   });
   session.taskElement.style.opacity = "0.28";
   moveDragGhost(event);
-  announce(`Moving ${getTask(session.taskId)?.title}. Choose a quadrant.`);
+  announce(`Moving ${getTask(session.taskId)?.title}. Drag within the list to reorder it.`);
 }
 
 function moveDragGhost(event) {
@@ -641,13 +877,28 @@ function moveDragGhost(event) {
 
   const quadrant = document.elementFromPoint(event.clientX, event.clientY)?.closest(".quadrant");
   const targetQuadrant = quadrant?.dataset.quadrant ?? null;
-  if (targetQuadrant === session.targetQuadrant) return;
+  const targetChanged = targetQuadrant !== session.targetQuadrant;
 
-  document.querySelectorAll(".quadrant").forEach((element) => {
-    element.classList.toggle("is-drag-over", element === quadrant);
-  });
+  if (targetChanged) {
+    document.querySelectorAll(".quadrant").forEach((element) => {
+      element.classList.toggle("is-drag-over", element === quadrant);
+    });
+  }
   session.targetQuadrant = targetQuadrant;
-  if (targetQuadrant) announce(`Drop in ${QUADRANTS[targetQuadrant].label}.`);
+
+  if (quadrant && targetQuadrant === session.originQuadrant) {
+    updateReorderTarget(session, quadrant, event.clientY);
+    updateDragAutoScroll(session, quadrant, event.clientY);
+  } else {
+    stopDragAutoScroll(session);
+    clearReorderIndicators();
+    session.targetBeforeTaskId = null;
+    session.canReorder = false;
+    session.reorderKey = null;
+    if (targetChanged && targetQuadrant) {
+      announce(`Drop in ${QUADRANTS[targetQuadrant].label}.`);
+    }
+  }
 }
 
 function finishPointerSession(event) {
@@ -655,6 +906,8 @@ function finishPointerSession(event) {
   if (!session || event.pointerId !== session.pointerId) return;
   const wasDragging = session.started;
   const targetQuadrant = session.targetQuadrant;
+  const targetBeforeTaskId = session.targetBeforeTaskId;
+  const canReorder = session.canReorder;
   const taskId = session.taskId;
 
   try {
@@ -666,11 +919,13 @@ function finishPointerSession(event) {
   }
 
   session.ghost?.remove();
+  stopDragAutoScroll(session);
   session.taskElement.style.opacity = "";
   document.body.classList.remove("is-dragging");
   document.querySelectorAll(".quadrant").forEach((quadrant) => {
     quadrant.classList.remove("is-drop-candidate", "is-drag-over");
   });
+  clearReorderIndicators();
   pointerSession = null;
 
   if (wasDragging) {
@@ -680,6 +935,12 @@ function finishPointerSession(event) {
     }, 0);
     if (targetQuadrant && targetQuadrant !== session.originQuadrant) {
       moveTaskTo(taskId, targetQuadrant);
+    } else if (
+      targetQuadrant === session.originQuadrant &&
+      canReorder &&
+      reorderTaskBefore(taskId, targetBeforeTaskId)
+    ) {
+      // The reorder helper renders, focuses, and announces the new position.
     } else {
       announce("Task stayed in its current quadrant.");
       findTaskElement(taskId)?.querySelector(".drag-handle")?.focus();
@@ -745,7 +1006,7 @@ document.addEventListener("input", (event) => {
 document.addEventListener("click", (event) => {
   const target = event.target.closest("[data-action]");
   if (!target) return;
-  const { action, taskId, targetQuadrant } = target.dataset;
+  const { action, direction, taskId, targetQuadrant } = target.dataset;
 
   if (action === "toggle-move" && suppressDragClick) {
     suppressDragClick = false;
@@ -778,6 +1039,9 @@ document.addEventListener("click", (event) => {
       break;
     case "move-task":
       moveTaskTo(taskId, targetQuadrant);
+      break;
+    case "reorder-task":
+      reorderTaskByDirection(taskId, direction);
       break;
     case "delete-task":
       deleteTaskWithUndo(taskId);

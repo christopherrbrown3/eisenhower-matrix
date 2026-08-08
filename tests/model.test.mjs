@@ -10,6 +10,7 @@ import {
   moveTask,
   normalizeState,
   quadrantFor,
+  reorderTask,
   restoreDeletedTask,
   setTaskCompleted,
   signalsForQuadrant,
@@ -90,6 +91,58 @@ test("moving a task updates its stored signals and target order", () => {
   assert.equal(task.urgent, true);
   assert.equal(task.order, 1);
   assert.equal(task.updatedAt, 300);
+});
+
+test("reorders tasks within a quadrant and reindexes their order", () => {
+  let state = createEmptyState();
+  for (const [index, title] of ["First", "Second", "Third"].entries()) {
+    state = addTask(
+      state,
+      { title, important: true, urgent: true },
+      { now: index + 1, idFactory: () => `task-${index + 1}` },
+    ).state;
+  }
+  state = addTask(
+    state,
+    { title: "Other quadrant", important: true, urgent: false },
+    { now: 4, idFactory: () => "task-4" },
+  ).state;
+
+  const reordered = reorderTask(state, "task-3", "task-1", 500);
+  const doTasks = tasksForQuadrant(reordered, "do");
+
+  assert.deepEqual(doTasks.map((task) => task.id), ["task-3", "task-1", "task-2"]);
+  assert.deepEqual(doTasks.map((task) => task.order), [0, 1, 2]);
+  assert.equal(reordered.tasks.find((task) => task.id === "task-4").order, 0);
+});
+
+test("reordering can append a task and rejects a target from another group", () => {
+  let state = createEmptyState();
+  for (const [index, title] of ["First", "Second", "Third"].entries()) {
+    state = addTask(
+      state,
+      { title, important: true, urgent: true },
+      { now: index + 1, idFactory: () => `task-${index + 1}` },
+    ).state;
+  }
+  state = addTask(
+    state,
+    { title: "Other quadrant", important: false, urgent: true },
+    { now: 4, idFactory: () => "task-4" },
+  ).state;
+
+  const appended = reorderTask(state, "task-1", null, 500);
+  assert.deepEqual(
+    tasksForQuadrant(appended, "do").map((task) => task.id),
+    ["task-2", "task-3", "task-1"],
+  );
+  assert.equal(reorderTask(state, "task-1", "task-4"), state);
+
+  const withCompletedTask = setTaskCompleted(state, "task-2", true, 600);
+  assert.equal(
+    reorderTask(withCompletedTask, "task-2", "task-1"),
+    withCompletedTask,
+  );
 });
 
 test("editing, completing, deleting, and restoring preserve task identity", () => {

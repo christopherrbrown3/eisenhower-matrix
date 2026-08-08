@@ -894,9 +894,16 @@ body.composer-open .first-run {
 
 .task-list {
   margin: 0;
-  padding: var(--space-xs);
+  padding: var(--space-xs) var(--space-xs) 0;
+  scroll-padding-block-end: var(--space-md);
   border-block-start: 1px solid var(--quadrant-line);
   list-style: none;
+}
+
+.task-list::after {
+  content: "";
+  display: block;
+  block-size: var(--space-md);
 }
 
 .task-list:empty {

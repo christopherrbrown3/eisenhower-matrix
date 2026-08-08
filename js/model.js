@@ -146,6 +146,39 @@ export function moveTask(state, taskId, quadrantId, now = Date.now()) {
   return changed ? { ...state, tasks } : state;
 }
 
+export function reorderTask(state, taskId, beforeTaskId = null, now = Date.now()) {
+  const task = state.tasks.find((item) => item.id === taskId);
+  if (!task) return state;
+
+  const quadrantId = quadrantFor(task);
+  const peers = state.tasks
+    .filter(
+      (item) =>
+        quadrantFor(item) === quadrantId && item.completed === task.completed,
+    )
+    .sort((a, b) => a.order - b.order);
+  const reordered = peers.filter((item) => item.id !== taskId);
+
+  if (beforeTaskId === null) {
+    reordered.push(task);
+  } else {
+    const targetIndex = reordered.findIndex((item) => item.id === beforeTaskId);
+    if (targetIndex < 0) return state;
+    reordered.splice(targetIndex, 0, task);
+  }
+
+  if (reordered.every((item, index) => item.id === peers[index]?.id)) return state;
+
+  const orderById = new Map(reordered.map((item, index) => [item.id, index]));
+  const tasks = state.tasks.map((item) => {
+    const order = orderById.get(item.id);
+    if (order === undefined || item.order === order) return item;
+    return { ...item, order, updatedAt: now };
+  });
+
+  return { ...state, tasks };
+}
+
 export function deleteTask(state, taskId) {
   const index = state.tasks.findIndex((task) => task.id === taskId);
   if (index < 0) return { state, deleted: null };

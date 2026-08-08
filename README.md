@@ -14,7 +14,7 @@ The product asks two questions—whether a task is important and whether it is u
 
 - **Guided task capture:** Importance is considered separately from urgency before a task can be added.
 - **Automatic prioritization:** Every answer combination maps deterministically to the correct quadrant.
-- **Flexible reclassification:** Drag tasks between quadrants with mouse or touch, or use the accessible Move controls.
+- **Flexible ordering and reclassification:** Reorder tasks within a quadrant or move them between quadrants with mouse, touch, or accessible controls.
 - **Simple task lifecycle:** Edit, complete, restore, delete, and undo without opening a complex detail view.
 - **Local-first persistence:** Tasks stay in the current browser using versioned `localStorage`; there is no account or cloud database.
 - **Resilient storage:** Invalid saved records are isolated, valid tasks are preserved, and cross-tab changes are detected.

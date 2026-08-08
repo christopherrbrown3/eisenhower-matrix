@@ -904,6 +904,7 @@ body.composer-open .first-run {
 }
 
 .task {
+  position: relative;
   color: var(--color-ink);
   background: color-mix(in oklch, var(--quadrant-tint) 72%, var(--color-surface));
   transition:
@@ -924,6 +925,26 @@ body.composer-open .first-run {
 
 .task + .task {
   border-block-start: 1px solid var(--color-line);
+}
+
+.task.is-reorder-before::before,
+.task.is-reorder-after::after {
+  content: "";
+  position: absolute;
+  inset-inline: var(--space-xs);
+  z-index: 1;
+  height: 0.125rem;
+  background: var(--quadrant-accent);
+  border-radius: var(--radius-pill);
+  pointer-events: none;
+}
+
+.task.is-reorder-before::before {
+  inset-block-start: -0.0625rem;
+}
+
+.task.is-reorder-after::after {
+  inset-block-end: -0.0625rem;
 }
 
 .task:focus-within:not(.is-completing),
@@ -1055,17 +1076,23 @@ body.composer-open .first-run {
 }
 
 .move-panel {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-xs);
+  display: grid;
+  gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md) var(--space-md)
     calc(2.875rem + var(--space-sm));
   background: transparent;
   border-block-start: 1px solid var(--quadrant-line);
 }
 
+.move-panel-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
 .move-panel-label {
+  min-width: 4.5rem;
   margin-inline-end: var(--space-2xs);
   color: var(--color-muted);
   font-size: var(--text-small);
@@ -1073,7 +1100,11 @@ body.composer-open .first-run {
 }
 
 .move-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 2.75rem;
+  gap: var(--space-xs);
   padding-inline: var(--space-sm);
   color: var(--color-ink);
   background: var(--color-surface);
@@ -1086,6 +1117,18 @@ body.composer-open .first-run {
 .move-option:hover {
   border-color: var(--color-line-strong);
   background: var(--color-primary-soft);
+}
+
+.move-option:disabled {
+  color: var(--color-faint);
+  background: transparent;
+  border-color: var(--color-line);
+  cursor: not-allowed;
+}
+
+.reorder-option svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .edit-form {
@@ -1510,6 +1553,11 @@ body.composer-open .mobile-add {
 
   .move-panel {
     padding-inline-start: var(--space-md);
+  }
+
+  .move-panel-label {
+    min-width: 0;
+    flex-basis: 100%;
   }
 
   .app-footer {

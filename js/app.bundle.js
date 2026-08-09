@@ -403,6 +403,7 @@ let toastTimer = 0;
 let composerReturnFocus = null;
 let pointerSession = null;
 let suppressDragClick = false;
+let scrollStateFrame = 0;
 const pendingCompletions = new Set();
 
 function createSvgIcon(name) {
@@ -509,6 +510,38 @@ function animateFromRects(previousRects) {
       ],
       { duration: 240, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
     );
+  });
+}
+
+function updateTaskListScrollState(list) {
+  const quadrant = list.closest(".quadrant");
+  if (!quadrant) return;
+
+  const baseLabel = list.dataset.baseLabel ?? list.getAttribute("aria-label") ?? "Tasks";
+  list.dataset.baseLabel = baseLabel;
+
+  const hasOverflow = list.scrollHeight - list.clientHeight > 1;
+  const hasMore = hasOverflow && list.scrollTop + list.clientHeight < list.scrollHeight - 1;
+  quadrant.classList.toggle("has-more-tasks", hasMore);
+
+  if (hasOverflow) {
+    list.tabIndex = 0;
+    list.setAttribute("aria-label", `${baseLabel}, scrollable`);
+  } else {
+    list.removeAttribute("tabindex");
+    list.setAttribute("aria-label", baseLabel);
+  }
+}
+
+function refreshTaskListScrollStates() {
+  document.querySelectorAll(".task-list").forEach(updateTaskListScrollState);
+}
+
+function queueTaskListScrollStateRefresh() {
+  if (scrollStateFrame) return;
+  scrollStateFrame = window.requestAnimationFrame(() => {
+    scrollStateFrame = 0;
+    refreshTaskListScrollStates();
   });
 }
 
@@ -759,6 +792,7 @@ function render({ previousRects = null, arrivingId = null, focusId = null } = {}
   elements.firstRun.hidden = state.tasks.length > 0;
 
   window.requestAnimationFrame(() => animateFromRects(previousRects));
+  queueTaskListScrollStateRefresh();
   if (focusId) focusTask(focusId, editingTaskId === focusId ? ".edit-input" : ".task-title-button");
 }
 
@@ -1329,6 +1363,16 @@ elements.completedToggle.addEventListener("click", () => {
   elements.completedToggle.focus();
 });
 
+elements.matrix.addEventListener(
+  "scroll",
+  (event) => {
+    if (event.target instanceof Element && event.target.matches(".task-list")) {
+      updateTaskListScrollState(event.target);
+    }
+  },
+  true,
+);
+
 document.addEventListener("submit", (event) => {
   const form = event.target.closest(".edit-form");
   if (!form) return;
@@ -1462,6 +1506,8 @@ window.addEventListener("storage", (event) => {
   render();
   showToast("Matrix updated in another tab.", { duration: 3200 });
 });
+
+window.addEventListener("resize", queueTaskListScrollStateRefresh);
 
 if (storageResult.error) {
   setSaveStatus("Not saved after reload");

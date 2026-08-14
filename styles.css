@@ -165,8 +165,7 @@ svg {
   width: min(100%, 96rem);
   min-height: 100dvh;
   margin-inline: auto;
-  background: var(--color-canvas);
-  box-shadow: 0 0 0 1px oklch(0.22 0.018 155 / 4%);
+  background: var(--color-bg);
 }
 
 .storage-banner {

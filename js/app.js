@@ -49,6 +49,7 @@ const ICON_PATHS = Object.freeze({
   check: ["M5 12.5 9.5 17 19 7"],
   close: ["m6 6 12 12", "M18 6 6 18"],
   move: ["M12 4v16", "m7 9 5-5 5 5", "m7 15 5 5 5-5"],
+  more: ["M12 5.5h.01", "M12 12h.01", "M12 18.5h.01"],
   save: ["m5 12 4 4L19 6"],
   trash: ["M4 7h16", "M9 7V4h6v3", "m7 7 1 13h8l1-13"],
 });
@@ -339,6 +340,18 @@ function createMovePanel(task, currentQuadrant) {
 
   panel.append(quadrantGroup);
 
+  const deleteGroup = document.createElement("div");
+  deleteGroup.className = "move-panel-group move-panel-group--danger";
+  deleteGroup.append(
+    createMoveOption({
+      action: "delete-task",
+      taskId: task.id,
+      label: "Delete task",
+      icon: "trash",
+    }),
+  );
+  panel.append(deleteGroup);
+
   return panel;
 }
 
@@ -357,18 +370,26 @@ function createTaskElement(task, quadrantId, arrivingId) {
   const dragHandle = document.createElement("button");
   dragHandle.type = "button";
   dragHandle.className = "drag-handle";
-  dragHandle.dataset.action = "toggle-move";
+  dragHandle.dataset.action = "drag-task";
   dragHandle.dataset.taskId = task.id;
-  dragHandle.setAttribute("aria-label", `Move or reorder ${task.title}`);
-  dragHandle.setAttribute("aria-expanded", String(openMoveTaskId === task.id));
-  if (openMoveTaskId === task.id) {
-    dragHandle.setAttribute("aria-controls", `move-options-${task.id}`);
-  }
+  dragHandle.setAttribute("aria-label", `Drag to reorder or move ${task.title}`);
   dragHandle.title = "Drag to reorder or move";
   const dots = document.createElement("span");
   dots.className = "drag-dots";
   dots.setAttribute("aria-hidden", "true");
   dragHandle.append(dots);
+
+  const moveButton = createIconButton({
+    action: "toggle-move",
+    label: `Move or reorder ${task.title}`,
+    icon: "more",
+    taskId: task.id,
+    className: "task-action task-menu",
+  });
+  moveButton.setAttribute("aria-expanded", String(openMoveTaskId === task.id));
+  if (openMoveTaskId === task.id) {
+    moveButton.setAttribute("aria-controls", `move-options-${task.id}`);
+  }
 
   const completeButton = document.createElement("button");
   completeButton.type = "button";
@@ -414,7 +435,7 @@ function createTaskElement(task, quadrantId, arrivingId) {
     }),
   );
 
-  row.append(completeButton, content, dragHandle, actions);
+  row.append(completeButton, content, dragHandle, moveButton, actions);
   item.append(row);
 
   if (openMoveTaskId === task.id) item.append(createMovePanel(task, quadrantId));
@@ -438,7 +459,7 @@ function render({ previousRects = null, arrivingId = null, focusId = null } = {}
   }
 
   const completedCount = state.tasks.filter((task) => task.completed).length;
-  elements.completedToggle.hidden = completedCount === 0;
+  elements.completedToggle.hidden = false;
   elements.completedToggle.setAttribute("aria-pressed", String(showCompleted));
   const completedAction = showCompleted ? "Hide" : "Show";
   const completedVerb = document.createElement("span");

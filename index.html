@@ -10,8 +10,8 @@
     >
     <title>Eisenhower Matrix</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="styles.css">
-    <script defer src="js/app.bundle.js"></script>
+    <link rel="stylesheet" href="styles.css?v=2">
+    <script defer src="js/app.bundle.js?v=2"></script>
   </head>
   <body>
     <a class="skip-link" href="#matrix">Skip to the matrix</a>
@@ -160,7 +160,16 @@
             </svg>
           </button>
         </section>
-        <div id="matrix" class="matrix" aria-label="Eisenhower Matrix" tabindex="-1">
+        <div class="matrix-frame">
+          <div class="matrix-axis matrix-axis--top" aria-hidden="true">
+            <span>Urgent</span>
+            <span>Not urgent</span>
+          </div>
+          <div class="matrix-axis matrix-axis--side" aria-hidden="true">
+            <span>Important</span>
+            <span>Not important</span>
+          </div>
+          <div id="matrix" class="matrix" aria-label="Eisenhower Matrix" tabindex="-1">
           <section class="quadrant quadrant--do" data-quadrant="do" aria-labelledby="do-heading">
             <header class="quadrant-header">
               <div class="quadrant-title-group">
@@ -236,6 +245,7 @@
             <p class="quadrant-empty" data-empty-for="eliminate">No low-value work to reconsider.</p>
             <span class="scroll-cue" aria-hidden="true">Scroll for more</span>
           </section>
+          </div>
         </div>
       </main>
 

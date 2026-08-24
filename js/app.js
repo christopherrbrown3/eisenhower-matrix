@@ -464,10 +464,10 @@ function render({ previousRects = null, arrivingId = null, focusId = null } = {}
   const completedAction = showCompleted ? "Hide" : "Show";
   const completedVerb = document.createElement("span");
   completedVerb.className = "completed-verb";
-  completedVerb.textContent = `${completedAction} `;
+  completedVerb.textContent = `${completedAction} completed`;
   const completedLabel = document.createElement("span");
   completedLabel.className = "completed-label";
-  completedLabel.textContent = `completed (${completedCount})`;
+  completedLabel.textContent = ` (${completedCount})`;
   elements.completedToggle.replaceChildren(completedVerb, completedLabel);
   elements.completedToggle.setAttribute(
     "aria-label",

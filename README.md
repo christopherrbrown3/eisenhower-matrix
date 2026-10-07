@@ -2,7 +2,7 @@
 
 A focused, local-first task prioritization tool for individual managers. It turns competing responsibilities into four clear actions: **do now, schedule, delegate, or eliminate**.
 
-[Open the live app](https://christopherrbrown3.github.io/eisenhower-matrix/)
+[Open the live app](https://eisenhower.christopherbrown.ai/)
 
 ## Why it exists
 
